@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Boom Meeting - Simple Video Conferencing</title>
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background-color: #f0f0f0;
+      font-family: Arial, sans-serif;
+      animation: changeBgColor 15s infinite;
+      background-image: url('image1.jpg');
+      background-size: cover;
+      background-repeat: no-repeat;
+      background-position: center;
+      transition: background-image 1s ease;
+    }
+
+    @keyframes changeBgColor {
+      0%, 100% { background-color: #f0f0f0; }
+      25% { background-color: #e9c46a; }
+      50% { background-color: #f4a261; }
+      75% { background-color: #e76f51; }
+    }
+
+    @keyframes changeBgImage {
+      0% { background-image: url('image1.jpg'); }
+      33% { background-image: url('image2.jpg'); }
+      66% { background-image: url('image3.jpg'); }
+      100% { background-image: url('image1.jpg'); }
+    }
+
+    #video-grid {
+      display: flex;
+      flex-wrap: wrap;
+      max-width: 800px;
+    }
+
+    video {
+      max-width: 300px;
+      margin: 10px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    }
+
+    #controls {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+    }
+
+    button {
+      padding: 12px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    button#join-btn {
+      background-color: #28a745;
+      color: #fff;
+    }
+
+    button#join-btn:hover {
+      background-color: #218838;
+    }
+
+    button#leave-btn {
+      background-color: #dc3545;
+      color: #fff;
+    }
+
+    button#leave-btn:hover {
+      background-color: #c82333;
+    }
+
+    button#record-btn, button#stop-record-btn {
+      background-color: #007bff;
+      color: #fff;
+    }
+
+    button#record-btn:hover, button#stop-record-btn:hover {
+      background-color: #0056b3;
+    }
+
+    #chat-box {
+      max-width: 800px;
+      margin-top: 20px;
+      padding: 10px;
+      border-radius: 8px;
+      background-color: #fff;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+      animation: fadeIn 0.5s ease;
+    }
+
+    #chat-messages {
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    #chat-input {
+      width: 100%;
+      padding: 12px;
+      margin-top: 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div id="video-grid"></div>
+  <div id="controls">
+    <button id="join-btn">Join Room</button>
+    <button id="leave-btn" disabled>Leave Room</button>
+    <button id="record-btn" disabled>Start Recording</button>
+    <button id="stop-record-btn" disabled>Stop Recording</button>
+  </div>
+  <div id="chat-box">
+    <div id="chat-messages"></div>
+    <input type="text" id="chat-input" placeholder="Type your message..." />
+  </div>
+  <script>
+    const videoGrid = document.getElementById('video-grid');
+    const joinBtn = document.getElementById('join-btn');
+    const leaveBtn = document.getElementById('leave-btn');
+    const recordBtn = document.getElementById('record-btn');
+    const stopRecordBtn = document.getElementById('stop-record-btn');
+
+    let localStream;
+    let mediaRecorder;
+    let recordedChunks = [];
+    let isRecording = false;
+
+    function startMedia() {
+      navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+        .then(stream => {
+          localStream = stream;
+          addVideoStream(stream);
+          joinBtn.disabled = true;
+          leaveBtn.disabled = false;
+          recordBtn.disabled = false;
+        })
+        .catch(error => {
+          console.error('Error accessing media devices:', error);
+        });
+    }
+
+    function addVideoStream(stream) {
+      const videoElement = document.createElement('video');
+      videoElement.srcObject = stream;
+      videoElement.autoplay = true;
+      videoElement.controls = true;
+      videoGrid.appendChild(videoElement);
+    }
+
+    function stopMedia() {
+      localStream.getTracks().forEach(track => track.stop());
+      while (videoGrid.firstChild) {
+        videoGrid.removeChild(videoGrid.firstChild);
+      }
+      joinBtn.disabled = false;
+      leaveBtn.disabled = true;
+      recordBtn.disabled = true;
+      stopRecordBtn.disabled = true;
+      if (isRecording) {
+        stopRecording();
+      }
+    }
+
+    function startRecording() {
+      if (typeof MediaRecorder === 'undefined' || !localStream) {
+        alert('Recording is not supported in this browser or no media stream available.');
+        return;
+      }
+
+      recordedChunks = [];
+      const options = { mimeType: 'video/webm;codecs=vp9' };
+      try {
+        mediaRecorder = new MediaRecorder(localStream, options);
+      } catch (error) {
+        console.error('Error creating MediaRecorder:', error);
+        return;
+      }
+
+      mediaRecorder.ondataavailable = handleDataAvailable;
+      mediaRecorder.onstop = handleRecordingStop;
+      mediaRecorder.start();
+      recordBtn.disabled = true;
+      stopRecordBtn.disabled = false;
+      isRecording = true;
+    }
+
+    function stopRecording() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        isRecording = false;
+      }
+    }
+
+    function handleDataAvailable(event) {
+      if (event.data.size > 0) {
+        recordedChunks.push(event.data);
+      }
+    }
+
+    function handleRecordingStop() {
+      const blob = new Blob(recordedChunks, { type: 'video/webm' });
+      const url = URL.createObjectURL(blob);
+      const downloadLink = document.createElement('a');
+      downloadLink.href = url;
+      downloadLink.download = 'boom_meeting_recording.webm';
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+    }
+
+    joinBtn.addEventListener('click', startMedia);
+    leaveBtn.addEventListener('click', stopMedia);
+    recordBtn.addEventListener('click', startRecording);
+    stopRecordBtn.addEventListener('click', stopRecording);
+
+    // ... JavaScript code for chat feature ...
+
+  </script>
+</body>
+</html>
